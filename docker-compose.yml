@@ -1,0 +1,93 @@
+version: '3.8'
+services:
+  backend:
+    build: ./real_estate_backend/
+    volumes:
+      - ./real_estate_backend:/app
+    ports:
+      - "8000:8000"
+    image: real-estate-backend:latest
+    container_name: backend_real_estate
+    command: daphne -b 0.0.0.0 -p 8000 core.asgi:application
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - ./real_estate_backend/.env
+    
+  db:
+    image: postgres
+    volumes:
+      - ./real_estate_backend/data/db:/var/lib/postgressql/data
+    env_file:
+      - ./real_estate_backend/.env
+    container_name: POSTGRES_DB
+   
+  redis:
+    image: redis:alpine
+    container_name: redis_real_estate
+    ports:
+      - "6379:6379"
+
+  celery:
+    build: 
+      context: ./real_estate_backend/
+    command: celery -A core worker -l INFO
+    volumes:
+      - ./real_estate_backend:/app
+    container_name: celery_real_estate
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    
+  celerybeat:
+    build: 
+      context: ./real_estate_backend/
+    command: celery -A core beat -l INFO
+    volumes:
+      - ./real_estate_backend/celerybeat/:/app/celerybeat/
+    container_name: celery_beat_real_estate
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+      - backend
+    
+  flower:
+    build: 
+      context: ./real_estate_backend/
+    command: celery -A core flower --address=0.0.0.0 --port=5555
+    volumes:
+      - ./real_estate_backend:/app
+    container_name: celery_flower_real_estate
+    ports:
+      - "5555:5555"
+    depends_on:
+      - celery
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+
+  frontend:
+    build: 
+      context: ./frontend/
+    ports:
+      - "3000:3000"
+    container_name: real_estate_frontend
+    env_file:
+      - ./frontend/.env.local
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx_real_estate
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-setup.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
+      
